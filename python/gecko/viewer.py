@@ -9,8 +9,6 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-import numpy as np
-
 
 class Viewer:
     """
@@ -103,10 +101,12 @@ class Viewer:
         """
         import pyvista as pv
 
-        from .coils import CoilsFile, coils_to_mesh
+        from libneo.coils import CoilsFile
+
+        from .coils import coils_to_mesh
 
         if isinstance(source, (str, Path)):
-            coils = CoilsFile.from_file(source)
+            coils = CoilsFile.from_file(str(source))
         else:
             coils = source
 
@@ -157,9 +157,7 @@ class Viewer:
 
         from .wall import wall_mesh_from_wout
 
-        mesh = wall_mesh_from_wout(
-            wout_path, n_theta=n_theta, n_zeta=n_zeta
-        )
+        mesh = wall_mesh_from_wout(wout_path, n_theta=n_theta, n_zeta=n_zeta)
         pv_mesh = pv.wrap(mesh)
         self._plotter.add_mesh(
             pv_mesh,

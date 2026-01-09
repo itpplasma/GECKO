@@ -25,6 +25,7 @@ classifiers = [
 ]
 dependencies = [
     "numpy>=1.21",
+    "libneo",
 ]
 
 [project.optional-dependencies]

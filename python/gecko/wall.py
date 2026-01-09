@@ -2,7 +2,7 @@
 Wall mesh generation from VMEC equilibria.
 
 This module provides functions for creating 3D wall meshes from VMEC wout files,
-with optional port cutouts.
+with optional port cutouts. Depends on libneo for VMEC geometry reading.
 """
 
 from __future__ import annotations
@@ -11,84 +11,6 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
-
-
-def _read_vmec_boundary(wout_path: Path | str) -> dict:
-    """
-    Read VMEC boundary Fourier coefficients from a wout NetCDF file.
-
-    Returns:
-        Dictionary with keys: rmnc, zmns, rmns, zmnc, xm, xn, nfp, ns
-    """
-    import netCDF4 as nc
-
-    wout_path = Path(wout_path)
-    with nc.Dataset(wout_path, "r") as ds:
-        rmnc = np.asarray(ds.variables["rmnc"][:], dtype=float)
-        zmns = np.asarray(ds.variables["zmns"][:], dtype=float)
-        xm = np.asarray(ds.variables["xm"][:], dtype=float)
-        xn = np.asarray(ds.variables["xn"][:], dtype=float)
-        nfp = int(ds.variables["nfp"][...])
-        ns = int(ds.variables["ns"][...])
-
-        rmns = None
-        zmnc = None
-        if "rmns" in ds.variables:
-            rmns = np.asarray(ds.variables["rmns"][:], dtype=float)
-        if "zmnc" in ds.variables:
-            zmnc = np.asarray(ds.variables["zmnc"][:], dtype=float)
-
-    return {
-        "rmnc": rmnc,
-        "zmns": zmns,
-        "rmns": rmns,
-        "zmnc": zmnc,
-        "xm": xm,
-        "xn": xn,
-        "nfp": nfp,
-        "ns": ns,
-    }
-
-
-def _vmec_coords(
-    vmec_data: dict,
-    s_index: int,
-    theta: np.ndarray,
-    zeta: float,
-    *,
-    use_asym: bool = True,
-) -> tuple[np.ndarray, np.ndarray]:
-    """
-    Compute R, Z coordinates from VMEC Fourier coefficients.
-
-    Args:
-        vmec_data: Dictionary from _read_vmec_boundary
-        s_index: Radial surface index
-        theta: Poloidal angles (1D array)
-        zeta: Single toroidal angle
-        use_asym: Include asymmetric terms if available
-
-    Returns:
-        R, Z arrays of same shape as theta
-    """
-    rmnc = vmec_data["rmnc"]
-    zmns = vmec_data["zmns"]
-    xm = vmec_data["xm"]
-    xn = vmec_data["xn"]
-    rmns = vmec_data["rmns"]
-    zmnc = vmec_data["zmnc"]
-
-    theta = np.asarray(theta, dtype=float)
-    angle = xm[:, None] * theta[None, :] - xn[:, None] * zeta
-
-    r = np.sum(rmnc[:, s_index, None] * np.cos(angle), axis=0)
-    z = np.sum(zmns[:, s_index, None] * np.sin(angle), axis=0)
-
-    if use_asym and rmns is not None and zmnc is not None:
-        r += np.sum(rmns[:, s_index, None] * np.sin(angle), axis=0)
-        z += np.sum(zmnc[:, s_index, None] * np.cos(angle), axis=0)
-
-    return r, z
 
 
 def wall_mesh_from_wout(
@@ -114,8 +36,10 @@ def wall_mesh_from_wout(
     """
     import trimesh
 
-    vmec_data = _read_vmec_boundary(wout_path)
-    ns = vmec_data["ns"]
+    from libneo.vmec import VMECGeometry
+
+    geom = VMECGeometry.from_file(str(wout_path))
+    ns = geom.rmnc.shape[1]
 
     if s_index < 0:
         s_index = ns + s_index
@@ -127,7 +51,7 @@ def wall_mesh_from_wout(
 
     xyz = np.zeros((n_zeta, n_theta, 3), dtype=float)
     for i, zet in enumerate(zeta):
-        r, z = _vmec_coords(vmec_data, s_index, theta, float(zet), use_asym=use_asym)
+        r, z, _ = geom.coords(s_index, theta, float(zet), use_asym=use_asym)
         xyz[i, :, 0] = r * np.cos(zet)
         xyz[i, :, 1] = r * np.sin(zet)
         xyz[i, :, 2] = z
@@ -175,8 +99,10 @@ def offset_wall_mesh(
     import trimesh
     from shapely.geometry import Polygon
 
-    vmec_data = _read_vmec_boundary(wout_path)
-    ns = vmec_data["ns"]
+    from libneo.vmec import VMECGeometry
+
+    geom = VMECGeometry.from_file(str(wout_path))
+    ns = geom.rmnc.shape[1]
     s_index = ns - 1
 
     theta = np.linspace(0.0, 2.0 * np.pi, n_theta, endpoint=False)
@@ -184,19 +110,16 @@ def offset_wall_mesh(
 
     xyz = np.zeros((n_zeta, n_theta, 3), dtype=float)
     for i, zet in enumerate(zeta):
-        r_lcfs, z_lcfs = _vmec_coords(
-            vmec_data, s_index, theta, float(zet), use_asym=use_asym
-        )
+        r_lcfs, z_lcfs, _ = geom.coords(s_index, theta, float(zet), use_asym=use_asym)
 
         poly = Polygon(np.column_stack([r_lcfs, z_lcfs]))
-        offset_poly = poly.buffer(offset, join_style=1)
+        offset_poly = poly.buffer(offset, join_style="round")
 
         if hasattr(offset_poly, "exterior"):
             coords = np.array(offset_poly.exterior.coords)
         else:
             raise RuntimeError("buffer produced invalid geometry")
 
-        # Resample to n_theta points
         r_wall, z_wall = _resample_polygon(coords[:, 0], coords[:, 1], n_theta)
 
         xyz[i, :, 0] = r_wall * np.cos(zet)
@@ -220,7 +143,9 @@ def offset_wall_mesh(
     return trimesh.Trimesh(vertices=vertices, faces=np.asarray(faces), process=False)
 
 
-def _resample_polygon(r: np.ndarray, z: np.ndarray, n: int) -> tuple[np.ndarray, np.ndarray]:
+def _resample_polygon(
+    r: np.ndarray, z: np.ndarray, n: int
+) -> tuple[np.ndarray, np.ndarray]:
     """Resample a closed polygon to n evenly-spaced points."""
     pts = np.column_stack([r, z])
     if np.linalg.norm(pts[0] - pts[-1]) < 1e-10:

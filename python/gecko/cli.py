@@ -51,19 +51,26 @@ def cmd_wall_from_vmec(args: argparse.Namespace) -> int:
 
 def cmd_coils_info(args: argparse.Namespace) -> int:
     """Show information about a coils file."""
-    from .coils import CoilsFile
+    from libneo.coils import CoilsFile
 
-    coils = CoilsFile.from_file(args.coils)
+    coils = CoilsFile.from_file(str(args.coils))
     print(f"File: {args.coils}")
     print(f"Periods: {coils.periods}")
     print(f"Mirror: {coils.mirror}")
-    print(f"Number of coils: {coils.n_coils}")
-    print(f"Total points: {coils.total_points}")
+    print(f"Number of coils: {len(coils.filaments)}")
+    print(f"Total points: {sum(len(f.coords) for f in coils.filaments)}")
 
-    bbox_min, bbox_max = coils.bounding_box()
-    print(f"Bounding box:")
-    print(f"  Min: ({bbox_min[0]:.3f}, {bbox_min[1]:.3f}, {bbox_min[2]:.3f})")
-    print(f"  Max: ({bbox_max[0]:.3f}, {bbox_max[1]:.3f}, {bbox_max[2]:.3f})")
+    all_pts = []
+    for fil in coils.filaments:
+        all_pts.append(fil.coords)
+    if all_pts:
+        import numpy as np
+        stacked = np.vstack(all_pts)
+        bbox_min = stacked.min(axis=0)
+        bbox_max = stacked.max(axis=0)
+        print(f"Bounding box:")
+        print(f"  Min: ({bbox_min[0]:.3f}, {bbox_min[1]:.3f}, {bbox_min[2]:.3f})")
+        print(f"  Max: ({bbox_max[0]:.3f}, {bbox_max[1]:.3f}, {bbox_max[2]:.3f})")
 
     for i, fil in enumerate(coils.filaments):
         cur = float(fil.current.mean())
@@ -74,10 +81,10 @@ def cmd_coils_info(args: argparse.Namespace) -> int:
 
 def cmd_coils_plot(args: argparse.Namespace) -> int:
     """Plot coils in 3D."""
-    from .coils import CoilsFile
+    from libneo.coils import CoilsFile
 
-    coils = CoilsFile.from_file(args.coils)
-    fig, ax = coils.plot(show=not args.output, show_legend=True)
+    coils = CoilsFile.from_file(str(args.coils))
+    fig, _ = coils.plot(show=not args.output, show_legend=True)
 
     if args.output:
         fig.savefig(args.output, dpi=150)
@@ -90,7 +97,7 @@ def main(argv: list[str] | None = None) -> int:
     """Main CLI entry point."""
     parser = argparse.ArgumentParser(
         prog="gecko",
-        description="GECKO - Geometry, Engineering, and CAD for Kinetic modeling and Optimization",
+        description="GECKO - Geometry, Engineering, and CAD for Kinetic modeling",
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
