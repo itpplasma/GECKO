@@ -23,7 +23,7 @@ def coil_to_tube_mesh(
     *,
     width: float,
     height: float,
-    close_threshold: float = 0.1,
+    closed: bool = True,
 ) -> "trimesh.Trimesh":
     """
     Create a 3D tube mesh from coil centerline with rectangular cross-section.
@@ -32,7 +32,7 @@ def coil_to_tube_mesh(
         coords: (N, 3) coil centerline points in meters
         width: Cross-section width (horizontal) in meters
         height: Cross-section height (vertical) in meters
-        close_threshold: If first-last point distance < threshold, close the loop
+        closed: If True, connect last profile back to first (default for coils)
 
     Returns:
         trimesh.Trimesh object
@@ -42,17 +42,9 @@ def coil_to_tube_mesh(
     if coords.shape[0] < 2:
         raise ValueError("Need at least 2 points for tube mesh")
 
-    # Check if coil is closed (first point close to last point)
-    gap = np.linalg.norm(coords[0] - coords[-1])
-    is_closed = gap < close_threshold
-
-    # For closed coils, exclude the duplicate last point
-    if is_closed:
-        coords = coords[:-1]
+    is_closed = closed
 
     n_pts = coords.shape[0]
-    if n_pts < 2:
-        raise ValueError("Need at least 2 points for tube mesh after removing duplicate")
 
     # Compute tangent vectors
     tangent = np.zeros_like(coords)
