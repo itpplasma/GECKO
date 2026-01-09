@@ -79,29 +79,68 @@ def coil_to_tube_mesh(
     ])
     n_profile = len(profile)
 
-    vertices_list = []
-    up = np.array([0.0, 0.0, 1.0])
+    # Compute rotation-minimizing frames along the curve
+    # This propagates the frame smoothly to avoid twist discontinuities
+    frames = []  # List of (side, up_local) tuples
+    up_global = np.array([0.0, 0.0, 1.0])
 
-    for center, t in zip(coords, tangent):
-        # Compute local frame using cross product
-        if abs(np.dot(t, up)) > 0.99:
-            side = np.cross(t, np.array([1.0, 0.0, 0.0]))
+    # Initial frame at first point
+    t0 = tangent[0]
+    if abs(np.dot(t0, up_global)) > 0.99:
+        side = np.cross(t0, np.array([1.0, 0.0, 0.0]))
+    else:
+        side = np.cross(t0, up_global)
+    side = side / np.linalg.norm(side)
+    up_local = np.cross(side, t0)
+    up_local = up_local / np.linalg.norm(up_local)
+    frames.append((side.copy(), up_local.copy()))
+
+    # Propagate frame along curve using double reflection method (stable RMF)
+    for i in range(1, n_pts):
+        t_prev = tangent[i - 1]
+        t_curr = tangent[i]
+        side_prev, up_prev = frames[-1]
+
+        # Reflect previous frame across the bisector plane
+        v1 = coords[i] - coords[i - 1]
+        c1 = np.dot(v1, v1)
+        if c1 < 1e-12:
+            frames.append((side_prev.copy(), up_prev.copy()))
+            continue
+
+        # First reflection (by tangent change)
+        side_reflect = side_prev - (2.0 / c1) * np.dot(v1, side_prev) * v1
+        t_reflect = t_prev - (2.0 / c1) * np.dot(v1, t_prev) * v1
+
+        # Second reflection (to align with new tangent)
+        v2 = t_curr - t_reflect
+        c2 = np.dot(v2, v2)
+        if c2 < 1e-12:
+            side_new = side_reflect
         else:
-            side = np.cross(t, up)
-        side_norm = np.linalg.norm(side)
+            side_new = side_reflect - (2.0 / c2) * np.dot(v2, side_reflect) * v2
+
+        # Ensure orthonormality
+        side_new = side_new - np.dot(side_new, t_curr) * t_curr
+        side_norm = np.linalg.norm(side_new)
         if side_norm > 1e-12:
-            side = side / side_norm
+            side_new = side_new / side_norm
         else:
-            side = np.array([1.0, 0.0, 0.0])
+            side_new = side_prev.copy()
 
-        up_local = np.cross(side, t)
-        up_norm = np.linalg.norm(up_local)
+        up_new = np.cross(side_new, t_curr)
+        up_norm = np.linalg.norm(up_new)
         if up_norm > 1e-12:
-            up_local = up_local / up_norm
+            up_new = up_new / up_norm
         else:
-            up_local = np.array([0.0, 0.0, 1.0])
+            up_new = up_prev.copy()
 
-        # Transform profile to world coordinates
+        frames.append((side_new, up_new))
+
+    # Generate vertices using the computed frames
+    vertices_list = []
+    for i, center in enumerate(coords):
+        side, up_local = frames[i]
         for px, py in profile:
             pt = center + px * side + py * up_local
             vertices_list.append(pt)
