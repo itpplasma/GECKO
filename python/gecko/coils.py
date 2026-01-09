@@ -124,14 +124,35 @@ def coil_to_tube_mesh(
 
     if is_closed:
         # Connect last profile back to first profile
+        # Find best vertex alignment to handle frame twist
         base = (n_pts - 1) * n_profile
         next_base = 0
+        last_profile_verts = vertices[base : base + n_profile]
+        first_profile_verts = vertices[next_base : next_base + n_profile]
+
+        # Try all rotations and find the one with minimum total distance
+        best_offset = 0
+        best_dist = float("inf")
+        for offset in range(n_profile):
+            total_dist = 0.0
+            for j in range(n_profile):
+                j_shifted = (j + offset) % n_profile
+                total_dist += np.linalg.norm(
+                    last_profile_verts[j] - first_profile_verts[j_shifted]
+                )
+            if total_dist < best_dist:
+                best_dist = total_dist
+                best_offset = offset
+
+        # Connect with the best alignment
         for j in range(n_profile):
             j_next = (j + 1) % n_profile
+            j_shifted = (j + best_offset) % n_profile
+            j_next_shifted = (j_next + best_offset) % n_profile
             v0 = base + j
             v1 = base + j_next
-            v2 = next_base + j_next
-            v3 = next_base + j
+            v2 = next_base + j_next_shifted
+            v3 = next_base + j_shifted
             faces.append([v0, v1, v2])
             faces.append([v0, v2, v3])
     else:
