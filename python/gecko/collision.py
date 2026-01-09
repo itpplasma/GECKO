@@ -234,30 +234,82 @@ def create_collision_markers(
     marker_radius: float = 0.05,
 ) -> "trimesh.Trimesh":
     """
-    Create sphere markers at collision contact points for visualization.
+    Create cone markers pointing at collision contact points.
 
-    Use this when boolean intersection is not available (no Blender backend).
+    Follows engineering drawing conventions (ISO 7010) where warning markers
+    use pointed/triangular shapes to indicate problem locations.
 
     Parameters
     ----------
     result : CollisionResult
         Result from detect_coil_collisions.
     marker_radius : float, default=0.05
-        Radius of marker spheres in meters.
+        Base radius of marker cones in meters.
 
     Returns
     -------
     trimesh.Trimesh
-        Combined mesh of all marker spheres.
+        Combined mesh of all marker cones.
     """
     import trimesh
+    from scipy.spatial.transform import Rotation
 
     markers = []
+
     for collision in result.collisions:
+        if len(collision.contact_points) == 0:
+            continue
+
+        # Compute centroid of contact points for this collision pair
+        centroid = np.mean(collision.contact_points, axis=0)
+
         for pt in collision.contact_points:
-            sphere = trimesh.creation.icosphere(subdivisions=2, radius=marker_radius)
-            sphere.apply_translation(pt)
-            markers.append(sphere)
+            # Create cone (tip at origin, pointing in +Z direction)
+            cone_height = marker_radius * 2.5
+            cone = trimesh.creation.cone(
+                radius=marker_radius,
+                height=cone_height,
+                sections=16,
+            )
+
+            # Direction from contact point toward centroid (cone points inward)
+            direction = centroid - pt
+            dist = np.linalg.norm(direction)
+            if dist < 1e-10:
+                # Point is at centroid, use radial direction from origin
+                direction = pt / (np.linalg.norm(pt) + 1e-10)
+            else:
+                direction = direction / dist
+
+            # Rotate cone to point in the direction
+            # Default cone points in +Z, we need to rotate to 'direction'
+            z_axis = np.array([0.0, 0.0, 1.0])
+            if np.abs(np.dot(z_axis, direction)) < 0.999:
+                rot_axis = np.cross(z_axis, direction)
+                rot_axis = rot_axis / np.linalg.norm(rot_axis)
+                angle = np.arccos(np.clip(np.dot(z_axis, direction), -1, 1))
+                rot = Rotation.from_rotvec(rot_axis * angle)
+                cone.apply_transform(
+                    np.vstack([
+                        np.hstack([rot.as_matrix(), np.zeros((3, 1))]),
+                        [0, 0, 0, 1]
+                    ])
+                )
+            elif np.dot(z_axis, direction) < 0:
+                # Flip 180 degrees
+                cone.apply_transform([
+                    [-1, 0, 0, 0],
+                    [0, -1, 0, 0],
+                    [0, 0, -1, 0],
+                    [0, 0, 0, 1]
+                ])
+
+            # Position cone so tip is at the contact point
+            # Cone tip is at origin after creation, base at +Z
+            # After rotation, tip should be at contact point
+            cone.apply_translation(pt)
+
+            markers.append(cone)
 
     if not markers:
         return trimesh.Trimesh()
