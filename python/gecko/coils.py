@@ -23,6 +23,7 @@ def coil_to_tube_mesh(
     *,
     width: float,
     height: float,
+    close_threshold: float = 0.1,
 ) -> "trimesh.Trimesh":
     """
     Create a 3D tube mesh from coil centerline with rectangular cross-section.
@@ -31,6 +32,7 @@ def coil_to_tube_mesh(
         coords: (N, 3) coil centerline points in meters
         width: Cross-section width (horizontal) in meters
         height: Cross-section height (vertical) in meters
+        close_threshold: If first-last point distance < threshold, close the loop
 
     Returns:
         trimesh.Trimesh object
@@ -41,11 +43,20 @@ def coil_to_tube_mesh(
     if n_pts < 2:
         raise ValueError("Need at least 2 points for tube mesh")
 
+    # Check if coil is closed (first point close to last point)
+    gap = np.linalg.norm(coords[0] - coords[-1])
+    is_closed = gap < close_threshold
+
     # Compute tangent vectors
     tangent = np.zeros_like(coords)
+    if is_closed:
+        # For closed coils, use periodic tangents
+        tangent[0] = coords[1] - coords[-1]
+        tangent[-1] = coords[0] - coords[-2]
+    else:
+        tangent[0] = coords[1] - coords[0]
+        tangent[-1] = coords[-1] - coords[-2]
     tangent[1:-1] = coords[2:] - coords[:-2]
-    tangent[0] = coords[1] - coords[0]
-    tangent[-1] = coords[-1] - coords[-2]
     norms = np.linalg.norm(tangent, axis=1, keepdims=True)
     norms[norms == 0] = 1e-12
     tangent = tangent / norms
@@ -104,22 +115,35 @@ def coil_to_tube_mesh(
             faces.append([v0, v1, v2])
             faces.append([v0, v2, v3])
 
-    # Cap the ends
-    def add_cap(base_idx: int, reverse: bool = False):
-        nonlocal vertices
-        cap_verts = vertices[base_idx : base_idx + n_profile]
-        center = cap_verts.mean(axis=0)
-        center_idx = len(vertices)
-        vertices = np.vstack([vertices, center])
+    if is_closed:
+        # Connect last profile back to first profile
+        base = (n_pts - 1) * n_profile
+        next_base = 0
         for j in range(n_profile):
             j_next = (j + 1) % n_profile
-            if reverse:
-                faces.append([center_idx, base_idx + j_next, base_idx + j])
-            else:
-                faces.append([center_idx, base_idx + j, base_idx + j_next])
+            v0 = base + j
+            v1 = base + j_next
+            v2 = next_base + j_next
+            v3 = next_base + j
+            faces.append([v0, v1, v2])
+            faces.append([v0, v2, v3])
+    else:
+        # Cap the open ends
+        def add_cap(base_idx: int, reverse: bool = False):
+            nonlocal vertices
+            cap_verts = vertices[base_idx : base_idx + n_profile]
+            center = cap_verts.mean(axis=0)
+            center_idx = len(vertices)
+            vertices = np.vstack([vertices, center])
+            for j in range(n_profile):
+                j_next = (j + 1) % n_profile
+                if reverse:
+                    faces.append([center_idx, base_idx + j_next, base_idx + j])
+                else:
+                    faces.append([center_idx, base_idx + j, base_idx + j_next])
 
-    add_cap(0, reverse=True)
-    add_cap((n_pts - 1) * n_profile, reverse=False)
+        add_cap(0, reverse=True)
+        add_cap((n_pts - 1) * n_profile, reverse=False)
 
     return trimesh.Trimesh(vertices=vertices, faces=np.array(faces), process=False)
 
