@@ -39,18 +39,25 @@ def coil_to_tube_mesh(
     """
     import trimesh
 
-    n_pts = coords.shape[0]
-    if n_pts < 2:
+    if coords.shape[0] < 2:
         raise ValueError("Need at least 2 points for tube mesh")
 
     # Check if coil is closed (first point close to last point)
     gap = np.linalg.norm(coords[0] - coords[-1])
     is_closed = gap < close_threshold
 
+    # For closed coils, exclude the duplicate last point
+    if is_closed:
+        coords = coords[:-1]
+
+    n_pts = coords.shape[0]
+    if n_pts < 2:
+        raise ValueError("Need at least 2 points for tube mesh after removing duplicate")
+
     # Compute tangent vectors
     tangent = np.zeros_like(coords)
     if is_closed:
-        # For closed coils, use periodic tangents
+        # For closed coils, use periodic tangents (wrap around)
         tangent[0] = coords[1] - coords[-1]
         tangent[-1] = coords[0] - coords[-2]
     else:
