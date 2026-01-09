@@ -97,6 +97,82 @@ This approach handles:
 - Self-intersecting offset curves (automatically resolved)
 - Non-uniform curvature
 
+## Collision Detection
+
+GECKO provides CAD-based collision detection for identifying geometric overlaps
+between coil winding packs. This is essential for verifying that optimized coil
+configurations are physically realizable.
+
+### Algorithm
+
+The collision detection uses a two-phase approach:
+
+**Phase 1: Broad-phase filtering (AABB)**
+
+For each pair of coils $(i, j)$, check if their axis-aligned bounding boxes (AABBs)
+overlap:
+
+$$
+\text{overlap} = \bigwedge_{k \in \{x,y,z\}} \left( \min_i^k \leq \max_j^k \right) \land \left( \min_j^k \leq \max_i^k \right)
+$$
+
+This $O(1)$ test quickly eliminates non-colliding pairs. For $N$ coils, the
+broad phase is $O(N^2)$ but with a very small constant factor.
+
+**Phase 2: Narrow-phase detection (KD-tree proximity)**
+
+For pairs that pass the AABB test, GECKO uses surface sampling with spatial
+indexing {cite:p}`scipy`:
+
+1. Sample $n$ points uniformly on the surface of each mesh using trimesh
+2. Build a KD-tree from mesh vertices using `scipy.spatial.cKDTree`
+3. Query nearest-neighbor distances from sampled points to the other mesh
+4. Points with distance below threshold $\tau$ are marked as contacts
+
+The threshold is computed adaptively:
+
+$$
+\tau = 2 \sqrt{A / N_f}
+$$
+
+where $A$ is the mesh surface area and $N_f$ is the number of faces. This
+approximates twice the characteristic face edge length.
+
+### Complexity
+
+| Phase | Time Complexity | Space Complexity |
+|-------|----------------|------------------|
+| AABB pre-filter | $O(N^2)$ | $O(N)$ |
+| KD-tree build | $O(V \log V)$ per mesh | $O(V)$ |
+| Proximity query | $O(n \log V)$ per pair | $O(n)$ |
+
+where $N$ is the number of coils, $V$ is vertices per mesh, and $n$ is sample points.
+
+### Visualization
+
+Collision points are visualized using cone markers following engineering
+drawing conventions (ISO 7010). The cones point toward the collision centroid,
+providing clear visual indication of interference locations.
+
+### Implementation
+
+```python
+from gecko.collision import detect_coil_collisions, create_collision_markers
+
+# Detect collisions between coil winding packs
+result = detect_coil_collisions(coils, width=0.4, height=0.8)
+
+if result.has_collisions:
+    print(f"Found {len(result.collisions)} collision pairs")
+    for c in result.collisions:
+        print(f"  Coils {c.coil_i} and {c.coil_j}: {len(c.contact_points)} contacts")
+
+# Create visualization markers
+markers = create_collision_markers(result, marker_radius=0.05)
+```
+
+See {py:func}`gecko.collision.detect_coil_collisions` for the full API.
+
 ## Visualization
 
 GECKO uses PyVista {cite:p}`pyvista` for interactive 3D visualization, providing:
