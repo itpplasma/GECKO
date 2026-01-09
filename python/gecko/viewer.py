@@ -195,14 +195,9 @@ class Viewer:
             self._plotter.camera.up = view_up
         return self
 
-    def show(self, *, interactive: bool = True) -> None:
-        """
-        Display the viewer.
-
-        Args:
-            interactive: Whether to allow interaction
-        """
-        self._plotter.show(interactive_update=interactive)
+    def show(self) -> None:
+        """Display the viewer (blocks until window is closed)."""
+        self._plotter.show()
 
     def screenshot(
         self,
