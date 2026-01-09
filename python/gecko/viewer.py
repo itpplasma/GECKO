@@ -21,18 +21,20 @@ class Viewer:
         viewer.show()
     """
 
-    def __init__(self, *, background: str = "white"):
+    def __init__(self, *, background: str = "white", off_screen: bool = False):
         """
         Initialize viewer.
 
         Args:
             background: Background color
+            off_screen: Use off-screen rendering (for headless servers)
         """
         import pyvista as pv
 
-        self._plotter = pv.Plotter()
+        self._plotter = pv.Plotter(off_screen=off_screen)
         self._plotter.set_background(background)
         self._meshes: list[Any] = []
+        self._off_screen = off_screen
 
     def add_wall(
         self,
@@ -80,7 +82,7 @@ class Viewer:
         source: Path | str | Any,
         *,
         cross_section: tuple[float, float] | None = None,
-        color: str = "copper",
+        color: str = "#B87333",
         show_centerline: bool = False,
         centerline_color: str = "blue",
         centerline_width: float = 2.0,
