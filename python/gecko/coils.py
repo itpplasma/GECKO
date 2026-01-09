@@ -2,15 +2,21 @@
 Coil visualization and mesh generation for fusion device geometry.
 
 This module extends libneo.coils with 3D visualization capabilities:
+
 - Rectangular cross-section tube meshes for coils
 - PyVista/trimesh integration
 
 Core coil parsing is provided by libneo.coils.
+
+Algorithms
+----------
+The tube mesh extrusion uses the **centroid frame** approach from
+:cite:t:`singh2020coils`. This defines an orthonormal frame at each curve
+point where the normal vector points toward the coil centroid, ensuring
+consistent orientation for closed loops without twist accumulation.
 """
 
 from __future__ import annotations
-
-from pathlib import Path
 
 import numpy as np
 
@@ -25,17 +31,48 @@ def coil_to_tube_mesh(
     height: float,
     closed: bool = True,
 ) -> "trimesh.Trimesh":
-    """
+    r"""
     Create a 3D tube mesh from coil centerline with rectangular cross-section.
 
-    Args:
-        coords: (N, 3) coil centerline points in meters
-        width: Cross-section width (horizontal) in meters
-        height: Cross-section height (vertical) in meters
-        closed: If True, connect last profile back to first (default for coils)
+    Uses the **centroid frame** approach :cite:p:`singh2020coils` to define
+    an orthonormal frame :math:`(\mathbf{t}, \mathbf{n}, \mathbf{b})` at each
+    curve point:
 
-    Returns:
-        trimesh.Trimesh object
+    .. math::
+
+        \mathbf{t} &= \frac{d\mathbf{r}/ds}{|d\mathbf{r}/ds|} \\
+        \mathbf{n} &= \frac{\boldsymbol{\delta} -
+            (\boldsymbol{\delta} \cdot \mathbf{t})\mathbf{t}}
+            {|\boldsymbol{\delta} -
+            (\boldsymbol{\delta} \cdot \mathbf{t})\mathbf{t}|} \\
+        \mathbf{b} &= \mathbf{t} \times \mathbf{n}
+
+    where :math:`\boldsymbol{\delta} = \mathbf{R} - \mathbf{r}` points from
+    the curve point toward the coil centroid :math:`\mathbf{R}`.
+
+    This approach naturally handles closed loops without twist accumulation
+    because all frames reference the same centroid point.
+
+    Parameters
+    ----------
+    coords : np.ndarray
+        (N, 3) coil centerline points in meters.
+    width : float
+        Cross-section width in meters.
+    height : float
+        Cross-section height in meters.
+    closed : bool, default=True
+        If True, connect last profile back to first (default for coils).
+
+    Returns
+    -------
+    trimesh.Trimesh
+        Triangle mesh of the coil tube.
+
+    References
+    ----------
+    .. bibliography::
+        :filter: key == "singh2020coils"
     """
     import trimesh
 
@@ -181,13 +218,19 @@ def coils_to_mesh(
     """
     Convert all coils to a combined 3D mesh with rectangular cross-sections.
 
-    Args:
-        coils: CoilsFile object (from libneo.coils or gecko.coils)
-        width: Cross-section width in meters
-        height: Cross-section height in meters
+    Parameters
+    ----------
+    coils : CoilsFile
+        CoilsFile object (from libneo.coils or gecko.coils).
+    width : float, default=0.4
+        Cross-section width in meters.
+    height : float, default=0.8
+        Cross-section height in meters.
 
-    Returns:
-        Combined trimesh.Trimesh object
+    Returns
+    -------
+    trimesh.Trimesh
+        Combined triangle mesh of all coils.
     """
     import trimesh
 
@@ -214,14 +257,21 @@ def plot_coils_3d(
     """
     Plot coils in 3D using PyVista.
 
-    Args:
-        coils: CoilsFile object
-        cross_section: (width, height) for tube mesh, or None for centerline only
-        color: Mesh/line color
-        show: Whether to display immediately
+    Parameters
+    ----------
+    coils : CoilsFile
+        CoilsFile object.
+    cross_section : tuple[float, float] or None, optional
+        (width, height) for tube mesh, or None for centerline only.
+    color : str, default="copper"
+        Mesh/line color.
+    show : bool, default=True
+        Whether to display immediately.
 
-    Returns:
-        PyVista plotter
+    Returns
+    -------
+    pyvista.Plotter
+        PyVista plotter instance.
     """
     import pyvista as pv
 
