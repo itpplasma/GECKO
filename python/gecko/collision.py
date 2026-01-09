@@ -132,7 +132,6 @@ def detect_coil_collisions(
 
     n_coils = len(coil_meshes)
     collisions = []
-    intersection_meshes = []
 
     # Check all pairs for collisions
     for i in range(n_coils):
@@ -145,55 +144,44 @@ def detect_coil_collisions(
             mesh_i = coil_meshes[i]
             mesh_j = coil_meshes[j]
 
-            # Check for intersection using boolean operations
-            try:
-                intersection = mesh_i.intersection(mesh_j, engine="blender")
-                if intersection is not None and len(intersection.vertices) > 0:
-                    # Valid intersection found
-                    contact_pts = intersection.vertices
-                    collisions.append(
-                        CollisionPair(
-                            coil_i=i,
-                            coil_j=j,
-                            intersection_mesh=intersection,
-                            contact_points=contact_pts,
-                        )
-                    )
-                    intersection_meshes.append(intersection)
-            except Exception:
-                # Blender not available, fall back to bounding box + sampling
-                if mesh_i.bounding_box.intersection(mesh_j.bounding_box) is not None:
-                    # Bounding boxes overlap - check more carefully with ray tests
-                    contact_pts = _find_contact_points(mesh_i, mesh_j)
-                    if len(contact_pts) > 0:
-                        collisions.append(
-                            CollisionPair(
-                                coil_i=i,
-                                coil_j=j,
-                                intersection_mesh=None,
-                                contact_points=contact_pts,
-                            )
-                        )
+            # Quick bounding box check first
+            bounds_i = mesh_i.bounds  # (2, 3) array: min and max
+            bounds_j = mesh_j.bounds
 
-    # Combine intersection meshes for visualization
-    collision_mesh = None
-    if intersection_meshes:
-        collision_mesh = trimesh.util.concatenate(intersection_meshes)
+            # Check if bounding boxes overlap
+            overlap = np.all(bounds_i[0] <= bounds_j[1]) and np.all(bounds_j[0] <= bounds_i[1])
+            if not overlap:
+                continue
+
+            # Bounding boxes overlap - check more carefully with surface sampling
+            contact_pts = _find_contact_points(mesh_i, mesh_j)
+            if len(contact_pts) > 0:
+                collisions.append(
+                    CollisionPair(
+                        coil_i=i,
+                        coil_j=j,
+                        intersection_mesh=None,
+                        contact_points=contact_pts,
+                    )
+                )
 
     return CollisionResult(
         collisions=collisions,
         n_coils=n_coils,
-        collision_mesh=collision_mesh,
+        collision_mesh=None,
     )
 
 
 def _find_contact_points(
     mesh_a: "trimesh.Trimesh",
     mesh_b: "trimesh.Trimesh",
-    n_samples: int = 1000,
+    n_samples: int = 500,
 ) -> np.ndarray:
     """
-    Find approximate contact points between two meshes using containment tests.
+    Find approximate contact points between two meshes using vertex proximity.
+
+    Uses a simple distance-based approach that does not require rtree or
+    other optional dependencies.
 
     Parameters
     ----------
@@ -207,28 +195,36 @@ def _find_contact_points(
     np.ndarray
         (N, 3) array of approximate contact points.
     """
-    # Sample points on surface of mesh_a
+    from scipy.spatial import cKDTree
+
+    # Sample points on surfaces
     points_a, _ = mesh_a.sample(n_samples, return_index=True)
-
-    # Check which points are inside mesh_b
-    inside_b = mesh_b.contains(points_a)
-
-    # Sample points on surface of mesh_b
     points_b, _ = mesh_b.sample(n_samples, return_index=True)
 
-    # Check which points are inside mesh_a
-    inside_a = mesh_a.contains(points_b)
+    # Build KD-tree for mesh_b vertices
+    tree_b = cKDTree(mesh_b.vertices)
+    tree_a = cKDTree(mesh_a.vertices)
 
-    # Combine contact points
-    contact_from_a = points_a[inside_b]
-    contact_from_b = points_b[inside_a]
+    # Find points from mesh_a that are very close to mesh_b surface
+    # Use a threshold based on characteristic mesh size
+    char_size_a = np.sqrt(mesh_a.area / len(mesh_a.faces)) if len(mesh_a.faces) > 0 else 0.01
+    char_size_b = np.sqrt(mesh_b.area / len(mesh_b.faces)) if len(mesh_b.faces) > 0 else 0.01
+    threshold = 2.0 * max(char_size_a, char_size_b)
 
-    if len(contact_from_a) > 0 and len(contact_from_b) > 0:
-        return np.vstack([contact_from_a, contact_from_b])
-    elif len(contact_from_a) > 0:
-        return contact_from_a
-    elif len(contact_from_b) > 0:
-        return contact_from_b
+    # Query distances from sampled points to other mesh
+    dist_a_to_b, _ = tree_b.query(points_a)
+    dist_b_to_a, _ = tree_a.query(points_b)
+
+    # Contact points are those closer than threshold
+    contact_a = points_a[dist_a_to_b < threshold]
+    contact_b = points_b[dist_b_to_a < threshold]
+
+    if len(contact_a) > 0 and len(contact_b) > 0:
+        return np.vstack([contact_a, contact_b])
+    elif len(contact_a) > 0:
+        return contact_a
+    elif len(contact_b) > 0:
+        return contact_b
     else:
         return np.empty((0, 3))
 
