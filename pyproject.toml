@@ -1,0 +1,63 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "gecko"
+version = "0.1.0"
+description = "GECKO - Geometry, Engineering, and CAD for Kinetic modeling and Optimization"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+authors = [
+    { name = "ITPcp Plasma Physics Group" },
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Physics",
+]
+dependencies = [
+    "numpy>=1.21",
+]
+
+[project.optional-dependencies]
+stl = [
+    "trimesh>=3.15",
+    "shapely>=2.0",
+]
+vis = [
+    "pyvista>=0.40",
+    "matplotlib>=3.5",
+]
+dev = [
+    "trimesh>=3.15",
+    "shapely>=2.0",
+    "pyvista>=0.40",
+    "matplotlib>=3.5",
+    "pytest>=7.0",
+    "netCDF4>=1.6",
+]
+
+[project.scripts]
+gecko = "gecko.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["python/gecko"]
+
+[tool.hatch.build.targets.sdist]
+include = ["python/gecko/**"]
+
+[tool.pytest.ini_options]
+testpaths = ["python/tests"]
+python_files = ["test_*.py"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py310"
