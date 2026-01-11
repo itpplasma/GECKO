@@ -17,6 +17,7 @@ def test_load_simple_wall_hits_units_cm_to_m(tmp_path) -> None:
         wall_hit[:] = np.array([0, 1, 0, 1], dtype=np.int8)
 
         wall_hit_cart = ds.createVariable("wall_hit_cart", "f8", ("xyz", "particle"))
+        wall_hit_cart.units = "cm"
         wall_hit_cart[:, :] = np.array(
             [
                 [0.0, 100.0, 0.0, 200.0],
@@ -36,4 +37,3 @@ def test_load_simple_wall_hits_units_cm_to_m(tmp_path) -> None:
     assert np.allclose(hits.points_m[:, 0], np.array([1.0, 2.0]))
     assert hits.cos_incidence is not None
     assert np.allclose(hits.cos_incidence, np.array([0.1, 0.2]))
-

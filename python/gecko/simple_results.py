@@ -18,7 +18,8 @@ def load_simple_wall_hits(results_nc: Path | str) -> SimpleWallHits:
     Load wall-hit points from SIMPLE `results.nc`.
 
     Conventions:
-    - `wall_hit_cart` is stored in **cm** in SIMPLE output.
+    - `wall_hit_cart` is stored in chartmap Cartesian units, written as a NetCDF
+      `units` attribute (typically `cm` or `m`).
     - This loader returns points in **meters**.
     """
     from netCDF4 import Dataset
@@ -29,14 +30,32 @@ def load_simple_wall_hits(results_nc: Path | str) -> SimpleWallHits:
             raise ValueError("results.nc missing wall_hit and/or wall_hit_cart")
 
         wall_hit = np.asarray(ds.variables["wall_hit"][:], dtype=np.int8)
-        hit_cart_cm = np.asarray(ds.variables["wall_hit_cart"][:], dtype=float)
+        hit_cart = np.asarray(ds.variables["wall_hit_cart"][:], dtype=float)
 
-        if hit_cart_cm.ndim != 2 or hit_cart_cm.shape[0] != 3:
-            raise ValueError("wall_hit_cart must have shape (3, N)")
+        units = getattr(ds.variables["wall_hit_cart"], "units", "")
+        if not units:
+            units = getattr(ds, "cart_units", "")
+        units = str(units).strip().lower()
+        if units in ("", "cm"):
+            cart_scale_to_m = 1.0e-2
+        elif units == "m":
+            cart_scale_to_m = 1.0
+        else:
+            raise ValueError(f"Unsupported wall_hit_cart units={units!r} (expected cm or m)")
+
+        if hit_cart.ndim != 2:
+            raise ValueError("wall_hit_cart must be 2D")
+        # Accept both (3, N) and (N, 3) conventions.
+        if hit_cart.shape[0] == 3:
+            hit_cart = hit_cart
+        elif hit_cart.shape[1] == 3:
+            hit_cart = hit_cart.T
+        else:
+            raise ValueError("wall_hit_cart must have shape (3, N) or (N, 3)")
 
         mask = wall_hit != 0
-        points_cm = hit_cart_cm[:, mask].T
-        points_m = 0.01 * points_cm
+        points_cart = hit_cart[:, mask].T
+        points_m = cart_scale_to_m * points_cart
 
         cos_incidence = None
         angle_rad = None
@@ -48,4 +67,3 @@ def load_simple_wall_hits(results_nc: Path | str) -> SimpleWallHits:
             angle_rad = np.asarray(ds.variables["wall_hit_angle_rad"][:], dtype=float)[mask]
 
     return SimpleWallHits(points_m=points_m, cos_incidence=cos_incidence, angle_rad=angle_rad)
-
