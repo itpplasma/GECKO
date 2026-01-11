@@ -82,6 +82,54 @@ class Viewer:
         self._meshes.append(mesh)
         return self
 
+    def add_points(
+        self,
+        points: Any,
+        *,
+        color: str | None = None,
+        opacity: float = 1.0,
+        point_size: float = 6.0,
+        scalars: Any = None,
+        cmap: str = "viridis",
+        render_points_as_spheres: bool = True,
+    ) -> "Viewer":
+        """
+        Add point cloud to the viewer.
+
+        Args:
+            points: Array of shape (N,3) in the same coordinate system as the wall.
+            color: Solid color (ignored if scalars provided)
+            opacity: Point opacity (0-1)
+            point_size: Point size in pixels
+            scalars: Optional scalar per point for colormap
+            cmap: Colormap name
+            render_points_as_spheres: Render points as spheres (prettier, slower)
+        """
+        import numpy as np
+        import pyvista as pv
+
+        pts = np.asarray(points, dtype=float)
+        if pts.ndim != 2 or pts.shape[1] != 3:
+            raise ValueError("points must have shape (N,3)")
+        if pts.shape[0] == 0:
+            return self
+
+        pdata = pv.PolyData(pts)
+        mesh_kwargs: dict[str, Any] = dict(
+            opacity=float(opacity),
+            point_size=float(point_size),
+            render_points_as_spheres=bool(render_points_as_spheres),
+        )
+        if scalars is not None:
+            mesh_kwargs["scalars"] = np.asarray(scalars)
+            mesh_kwargs["cmap"] = str(cmap)
+        else:
+            mesh_kwargs["color"] = color or "red"
+
+        self._plotter.add_mesh(pdata, **mesh_kwargs)
+        self._meshes.append(pdata)
+        return self
+
     def add_coils(
         self,
         source: Path | str | Any,

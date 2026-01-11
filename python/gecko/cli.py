@@ -123,6 +123,69 @@ def cmd_stl_convert(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_view_results(args: argparse.Namespace) -> int:
+    """View SIMPLE results.nc wall-hit points overlaid on an STL wall."""
+    from .simple_results import load_simple_wall_hits
+    from .viewer import Viewer
+
+    if args.stl_scale is not None:
+        stl_scale = float(args.stl_scale)
+    else:
+        stl_units = str(args.stl_units).strip().lower()
+        if stl_units == "m":
+            stl_scale = 1.0
+        elif stl_units == "mm":
+            stl_scale = 1.0e-3
+        else:
+            raise ValueError("stl_units must be m or mm")
+
+    hits = load_simple_wall_hits(args.results)
+
+    viewer = Viewer(off_screen=bool(args.off_screen))
+    viewer.add_axes()
+
+    if args.wall is not None:
+        viewer.add_wall(args.wall, opacity=float(args.wall_opacity), scale=stl_scale)
+
+    if args.coils is not None:
+        viewer.add_coils(
+            args.coils,
+            cross_section=(args.coil_width, args.coil_height)
+            if args.show_coil_mesh
+            else None,
+            show_centerline=bool(args.show_coil_centerline),
+        )
+
+    if args.color_by == "cos_incidence" and hits.cos_incidence is not None:
+        viewer.add_points(
+            hits.points_m,
+            scalars=hits.cos_incidence,
+            cmap=str(args.cmap),
+            point_size=float(args.point_size),
+        )
+        viewer.add_scalar_bar(title="cos_incidence")
+    elif args.color_by == "angle_rad" and hits.angle_rad is not None:
+        viewer.add_points(
+            hits.points_m,
+            scalars=hits.angle_rad,
+            cmap=str(args.cmap),
+            point_size=float(args.point_size),
+        )
+        viewer.add_scalar_bar(title="angle_rad")
+    else:
+        viewer.add_points(
+            hits.points_m,
+            color=str(args.point_color),
+            point_size=float(args.point_size),
+        )
+
+    if args.screenshot is not None:
+        viewer.screenshot(args.screenshot)
+    if not args.off_screen:
+        viewer.show()
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     """Main CLI entry point."""
     parser = argparse.ArgumentParser(
@@ -176,6 +239,43 @@ def main(argv: list[str] | None = None) -> int:
     p_stl.add_argument("--from-units", choices=["m", "mm"], required=True)
     p_stl.add_argument("--to-units", choices=["m", "mm"], required=True)
     p_stl.set_defaults(func=cmd_stl_convert)
+
+    p_results = subparsers.add_parser(
+        "view-results",
+        help="View SIMPLE results.nc (wall_hit points) overlaid on an STL wall",
+    )
+    p_results.add_argument("results", type=Path, help="SIMPLE results.nc file")
+    p_results.add_argument("--wall", type=Path, default=None, help="Wall STL file")
+    p_results.add_argument("--coils", type=Path, default=None, help="Optional coils file")
+    p_results.add_argument("--wall-opacity", type=float, default=0.6)
+    p_results.add_argument("--point-size", type=float, default=6.0)
+    p_results.add_argument("--point-color", type=str, default="red")
+    p_results.add_argument("--cmap", type=str, default="viridis")
+    p_results.add_argument(
+        "--color-by",
+        choices=["none", "cos_incidence", "angle_rad"],
+        default="none",
+        help="Color hit points by a scalar from results.nc (if present).",
+    )
+    p_results.add_argument(
+        "--stl-units",
+        choices=["m", "mm"],
+        default="m",
+        help="Interpret STL coordinates in these units (no auto-detect).",
+    )
+    p_results.add_argument(
+        "--stl-scale",
+        type=float,
+        default=None,
+        help="Additional STL scale factor (overrides --stl-units).",
+    )
+    p_results.add_argument("--off-screen", action="store_true")
+    p_results.add_argument("--screenshot", type=Path, default=None)
+    p_results.add_argument("--coil-width", type=float, default=0.4)
+    p_results.add_argument("--coil-height", type=float, default=0.8)
+    p_results.add_argument("--show-coil-mesh", action="store_true")
+    p_results.add_argument("--show-coil-centerline", action="store_true")
+    p_results.set_defaults(func=cmd_view_results)
 
     args = parser.parse_args(argv)
     return args.func(args)
