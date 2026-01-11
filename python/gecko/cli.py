@@ -21,7 +21,23 @@ def cmd_view(args: argparse.Namespace) -> int:
     if args.coil_width and args.coil_height:
         cross_section = (args.coil_width, args.coil_height)
 
-    quick_view(*args.files, coil_cross_section=cross_section, show=True)
+    if args.stl_scale is not None:
+        stl_scale = float(args.stl_scale)
+    else:
+        stl_units = str(args.stl_units).strip().lower()
+        if stl_units == "m":
+            stl_scale = 1.0
+        elif stl_units == "mm":
+            stl_scale = 1.0e-3
+        else:
+            raise ValueError("stl_units must be m or mm")
+
+    quick_view(
+        *args.files,
+        coil_cross_section=cross_section,
+        show=True,
+        stl_scale=stl_scale,
+    )
     return 0
 
 
@@ -93,6 +109,20 @@ def cmd_coils_plot(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_stl_convert(args: argparse.Namespace) -> int:
+    """Convert STL units between mm and m."""
+    from .stl import convert_stl_units
+
+    out = convert_stl_units(
+        args.input,
+        args.output,
+        from_units=args.from_units,
+        to_units=args.to_units,
+    )
+    print(f"Wrote {out}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     """Main CLI entry point."""
     parser = argparse.ArgumentParser(
@@ -106,6 +136,18 @@ def main(argv: list[str] | None = None) -> int:
     p_view.add_argument("files", nargs="+", type=Path, help="Files to view")
     p_view.add_argument("--coil-width", type=float, default=0.4)
     p_view.add_argument("--coil-height", type=float, default=0.8)
+    p_view.add_argument(
+        "--stl-units",
+        choices=["m", "mm"],
+        default="m",
+        help="Interpret STL coordinates in these units (no auto-detect).",
+    )
+    p_view.add_argument(
+        "--stl-scale",
+        type=float,
+        default=None,
+        help="Additional STL scale factor (overrides --stl-units).",
+    )
     p_view.set_defaults(func=cmd_view)
 
     # wall-from-vmec command
@@ -127,6 +169,13 @@ def main(argv: list[str] | None = None) -> int:
     p_plot.add_argument("coils", type=Path, help="Coils file")
     p_plot.add_argument("-o", "--output", type=Path, help="Output image file")
     p_plot.set_defaults(func=cmd_coils_plot)
+
+    p_stl = subparsers.add_parser("stl-convert", help="Convert STL units (mm <-> m)")
+    p_stl.add_argument("input", type=Path, help="Input STL file")
+    p_stl.add_argument("output", type=Path, help="Output STL file")
+    p_stl.add_argument("--from-units", choices=["m", "mm"], required=True)
+    p_stl.add_argument("--to-units", choices=["m", "mm"], required=True)
+    p_stl.set_defaults(func=cmd_stl_convert)
 
     args = parser.parse_args(argv)
     return args.func(args)

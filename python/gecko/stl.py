@@ -449,3 +449,50 @@ def export_mesh_to_stl(mesh: object, path: Path | str) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     mesh.export(str(path))
     return path
+
+
+def convert_stl_units(
+    input_path: Path | str,
+    output_path: Path | str,
+    *,
+    from_units: str,
+    to_units: str,
+) -> Path:
+    """
+    Convert an STL file between mm and m.
+
+    STL has no unit metadata; this applies a pure geometric scale.
+    """
+    import trimesh
+
+    inp = Path(input_path)
+    out = Path(output_path)
+
+    from_u = from_units.strip().lower()
+    to_u = to_units.strip().lower()
+
+    if from_u not in {"m", "mm"}:
+        raise ValueError("from_units must be m or mm")
+    if to_u not in {"m", "mm"}:
+        raise ValueError("to_units must be m or mm")
+
+    if from_u == to_u:
+        scale = 1.0
+    elif from_u == "mm" and to_u == "m":
+        scale = 1.0e-3
+    elif from_u == "m" and to_u == "mm":
+        scale = 1.0e3
+    else:
+        raise RuntimeError("unreachable units conversion")
+
+    mesh = trimesh.load_mesh(inp, process=False)
+    if not isinstance(mesh, trimesh.Trimesh):
+        raise TypeError("expected a single STL mesh")
+
+    if scale != 1.0:
+        mesh = mesh.copy()
+        mesh.apply_scale(scale)
+
+    out.parent.mkdir(parents=True, exist_ok=True)
+    mesh.export(str(out))
+    return out

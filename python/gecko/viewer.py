@@ -43,6 +43,7 @@ class Viewer:
         color: str = "lightgray",
         opacity: float = 0.7,
         show_edges: bool = False,
+        scale: float = 1.0,
     ) -> "Viewer":
         """
         Add a wall mesh to the viewer.
@@ -67,6 +68,10 @@ class Viewer:
                 mesh = pv.wrap(source)
             else:
                 mesh = source
+
+        if scale != 1.0:
+            mesh = mesh.copy(deep=True)
+            mesh.scale((scale, scale, scale), inplace=True)
 
         self._plotter.add_mesh(
             mesh,
@@ -234,6 +239,7 @@ def quick_view(
     *sources: Path | str,
     coil_cross_section: tuple[float, float] | None = (0.4, 0.8),
     show: bool = True,
+    stl_scale: float = 1.0,
 ) -> Viewer:
     """
     Quick visualization of multiple geometry files.
@@ -257,7 +263,7 @@ def quick_view(
         name = path.name.lower()
 
         if suffix == ".stl":
-            viewer.add_wall(path)
+            viewer.add_wall(path, scale=stl_scale)
         elif suffix == ".nc" and "wout" in name:
             viewer.add_vmec_lcfs(path)
         elif "coil" in name or suffix == ".scaled":
@@ -268,7 +274,7 @@ def quick_view(
                 viewer.add_coils(path, cross_section=coil_cross_section)
             except Exception:
                 try:
-                    viewer.add_wall(path)
+                    viewer.add_wall(path, scale=stl_scale)
                 except Exception:
                     print(f"Could not load: {path}")
 
