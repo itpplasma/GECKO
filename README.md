@@ -68,6 +68,20 @@ viewer.add_coils("coils.scaled", cross_section=(0.4, 0.8))
 viewer.show()
 ```
 
+### STL Units (mm vs m)
+
+STL files do not store units. GECKO assumes **meters** by default.
+
+For engineer CAD STLs (often **mm**), either:
+
+```bash
+# 1) Convert once (recommended)
+python3 -m gecko.cli stl-convert wall_mm.stl wall_m.stl --from-units mm --to-units m
+
+# 2) Or scale for visualization only
+python3 -m gecko.cli view --stl-units mm wall_mm.stl
+```
+
 ## License
 
 MIT License
