@@ -246,3 +246,92 @@ def cut_cylindrical_ports(
 
     faces = mesh.faces[keep]
     return trimesh.Trimesh(vertices=mesh.vertices.copy(), faces=faces, process=False)
+
+
+def wall_mesh_from_chartmap(
+    chartmap_path: Path | str,
+    *,
+    rho_index: int = -1,
+    scale_to_m: float = 0.01,
+) -> "trimesh.Trimesh":
+    """
+    Create a 3D triangle mesh from a chartmap boundary surface.
+
+    This creates an STL wall that exactly matches the chartmap coordinate
+    boundary at the specified rho index. Use this instead of offset_wall_mesh
+    when the chartmap was generated with map2disc or vmec_extended, as the
+    boundary shape may differ from a simple VMEC LCFS offset.
+
+    Args:
+        chartmap_path: Path to chartmap NetCDF file
+        rho_index: Radial index for boundary (-1 for outermost = rho=1)
+        scale_to_m: Scale factor to convert chartmap units to meters
+                    (0.01 for cm, 1.0 for m)
+
+    Returns:
+        trimesh.Trimesh object with vertices in meters
+    """
+    import trimesh
+    from netCDF4 import Dataset
+
+    with Dataset(str(chartmap_path), "r") as ds:
+        theta = ds.variables["theta"][:]
+        zeta = ds.variables["zeta"][:]
+        nfp = int(ds.variables["num_field_periods"][...])
+
+        x = ds.variables["x"][:, :, rho_index]  # (nzeta, ntheta)
+        y = ds.variables["y"][:, :, rho_index]
+        z = ds.variables["z"][:, :, rho_index]
+
+    nzeta, ntheta = x.shape
+
+    # Replicate for all field periods
+    all_x, all_y, all_z = [], [], []
+    for fp in range(nfp):
+        angle = 2.0 * np.pi * fp / nfp
+        cos_a, sin_a = np.cos(angle), np.sin(angle)
+        x_rot = x * cos_a - y * sin_a
+        y_rot = x * sin_a + y * cos_a
+        all_x.append(x_rot)
+        all_y.append(y_rot)
+        all_z.append(z)
+
+    x_full = np.concatenate(all_x, axis=0)
+    y_full = np.concatenate(all_y, axis=0)
+    z_full = np.concatenate(all_z, axis=0)
+    nzeta_total = nzeta * nfp
+
+    # Assume last theta wraps to first (theta=2pi == theta=0)
+    ntheta_unique = ntheta - 1 if ntheta > 1 else ntheta
+
+    # Build vertices
+    vertices = np.zeros((nzeta_total * ntheta_unique, 3))
+    for iz in range(nzeta_total):
+        for it in range(ntheta_unique):
+            idx = iz * ntheta_unique + it
+            vertices[idx] = [x_full[iz, it], y_full[iz, it], z_full[iz, it]]
+
+    # Convert to meters
+    vertices *= scale_to_m
+
+    # Build faces (wrapping both theta and zeta)
+    faces = []
+    for iz in range(nzeta_total):
+        iz_next = (iz + 1) % nzeta_total
+        for it in range(ntheta_unique):
+            it_next = (it + 1) % ntheta_unique
+
+            i00 = iz * ntheta_unique + it
+            i10 = iz_next * ntheta_unique + it
+            i01 = iz * ntheta_unique + it_next
+            i11 = iz_next * ntheta_unique + it_next
+
+            faces.append([i00, i10, i01])
+            faces.append([i10, i11, i01])
+
+    mesh = trimesh.Trimesh(
+        vertices=vertices, faces=np.asarray(faces), process=False
+    )
+    mesh.fix_normals()
+
+    return mesh
