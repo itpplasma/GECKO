@@ -11,6 +11,7 @@ cq = pytest.importorskip("cadquery")
 from gecko.cli import main
 from gecko.step import (
     StepCoilError,
+    _section_centers,
     coils_from_step,
     extract_step_centerlines,
     write_step_coils,
@@ -22,7 +23,9 @@ from .step_helpers import field, loft_coil, nearest_on_polyline
 
 @pytest.fixture(scope="module")
 def alpes_step(tmp_path_factory):
-    original = np.loadtxt(Path(__file__).parent / "data/alpes_coil0.txt") * 330.0
+    original = (
+        np.loadtxt(Path(__file__).parent / "data/alpes/coil_coordinates0.txt") * 330.0
+    )
     shape = loft_coil(original)
     path = tmp_path_factory.mktemp("step") / "alpes.step"
     cq.exporters.export(shape, str(path))
@@ -50,18 +53,27 @@ def test_alpes_roundtrip(alpes_step, tmp_path):
     extracted = result.filaments[0].coords
     assert extracted.shape == (1025, 3)
     np.testing.assert_array_equal(extracted[0], extracted[-1])
-    # Compare dense original segments as well as source vertices against the
-    # extracted polygon; also check every extracted vertex against the source.
+    # Isolate CAD section-center extraction before uniform arc-length resampling.
+    solid = cq.importers.importStep(str(path)).val().Solids()[0]
+    centers = _section_centers(solid) * 1e-3
+    assert centers.shape == original.shape
+    center_distances = np.linalg.norm(centers[:, None, :] - original, axis=2)
+    extraction_error = max(
+        center_distances.min(axis=0).max(), center_distances.min(axis=1).max()
+    )
+    assert extraction_error < 1e-9
+    # Resampled vertices lie on source segments, but new chords cut corners.
+    # Sample the reverse distance on 32 positions per source segment.
     dense = np.concatenate(
         [
             original + f * (np.roll(original, -1, axis=0) - original)
             for f in np.linspace(0, 1, 32, endpoint=False)
         ]
     )
-    projected, forward = nearest_on_polyline(extracted[:-1], original)
-    _, backward = nearest_on_polyline(dense, extracted[:-1])
-    deviation = max(forward.max(), backward.max())
-    assert deviation < 2e-4  # 0.2 mm, in SI coordinates
+    projected, resampled_to_source = nearest_on_polyline(extracted[:-1], original)
+    _, source_to_resampled = nearest_on_polyline(dense, extracted[:-1])
+    assert resampled_to_source.max() < 1e-9
+    assert source_to_resampled.max() < 2e-4  # 0.2 mm chord error
     assert np.all(np.linalg.norm(np.diff(extracted, axis=0), axis=1) > 0)
     assert np.linalg.norm(extracted[0] - extracted[-2]) < 0.01
     # CAD has no physical current sense; compare with the source orientation.
@@ -69,11 +81,23 @@ def test_alpes_roundtrip(alpes_step, tmp_path):
     result_area = np.cross(extracted[:-1], extracted[1:]).sum(axis=0)
     if np.dot(source_area, result_area) < 0:
         original = original[::-1]
+    center_area = np.cross(centers, np.roll(centers, -1, axis=0)).sum(axis=0)
+    if np.dot(center_area, result_area) < 0:
+        centers = centers[::-1]
     grid = np.array(np.meshgrid(*[[-0.08, 0.0, 0.08]] * 3)).reshape(3, -1).T
     _, clearance = nearest_on_polyline(grid, original)
     assert clearance.min() > 0.03
     source_field = field(grid, original, 1200)
+    center_field = field(grid, centers, 1200)
     result_field = field(grid, extracted[:-1], 1200)
+    extraction_relative = np.linalg.norm(center_field - source_field, axis=1) / (
+        np.linalg.norm(source_field, axis=1)
+    )
+    resampling_relative = np.linalg.norm(result_field - center_field, axis=1) / (
+        np.linalg.norm(center_field, axis=1)
+    )
+    assert extraction_relative.max() < 1e-9
+    assert resampling_relative.max() < 2e-3
     relative = np.linalg.norm(result_field - source_field, axis=1) / np.linalg.norm(
         source_field, axis=1
     )
@@ -91,26 +115,57 @@ def test_alpes_roundtrip(alpes_step, tmp_path):
     artifacts.mkdir(parents=True, exist_ok=True)
     np.savetxt(
         artifacts / "centerline.csv",
-        np.column_stack([projected, extracted[:-1], forward]),
+        np.column_stack([projected, extracted[:-1], resampled_to_source]),
         delimiter=",",
-        header="original_x_m,original_y_m,original_z_m,extracted_x_m,"
-        "extracted_y_m,extracted_z_m,deviation_m",
+        header="source_projection_x_m,source_projection_y_m,source_projection_z_m,"
+        "resampled_x_m,resampled_y_m,resampled_z_m,resampled_to_source_distance_m",
         comments="",
     )
     np.savetxt(
         artifacts / "field_errors.csv",
-        np.column_stack([grid, source_field, result_field, relative]),
+        np.column_stack(
+            [
+                grid,
+                source_field,
+                center_field,
+                result_field,
+                extraction_relative,
+                resampling_relative,
+                relative,
+            ]
+        ),
         delimiter=",",
-        header="x_m,y_m,z_m,original_Bx_T,original_By_T,original_Bz_T,"
-        "extracted_Bx_T,extracted_By_T,extracted_Bz_T,relative_error",
+        header="x_m,y_m,z_m,source_Bx_T,source_By_T,source_Bz_T,"
+        "section_center_Bx_T,section_center_By_T,section_center_Bz_T,"
+        "resampled_Bx_T,resampled_By_T,resampled_Bz_T,"
+        "extraction_relative_field_error,resampling_relative_field_error,"
+        "total_relative_field_error",
         comments="",
     )
     np.savetxt(
         artifacts / "statistics.csv",
-        [[deviation, relative.max(), np.sqrt(np.mean(relative**2)), 2e-4, 2e-3]],
+        [
+            [
+                extraction_error,
+                resampled_to_source.max(),
+                source_to_resampled.max(),
+                extraction_relative.max(),
+                resampling_relative.max(),
+                np.sqrt(np.mean(resampling_relative**2)),
+                relative.max(),
+                1e-9,
+                2e-4,
+                1e-9,
+                2e-3,
+            ]
+        ],
         delimiter=",",
-        header="max_centerline_deviation_m,max_relative_field_error,"
-        "rms_relative_field_error,centerline_tolerance_m,field_tolerance",
+        header="max_extraction_section_center_error_m,"
+        "max_resampled_to_source_distance_m,max_source_to_resampled_distance_m,"
+        "max_extraction_relative_field_error,max_resampling_relative_field_error,"
+        "rms_resampling_relative_field_error,max_total_relative_field_error,"
+        "extraction_tolerance_m,resampling_chord_tolerance_m,"
+        "extraction_field_tolerance,resampling_and_total_field_tolerance",
         comments="",
     )
 
@@ -201,6 +256,23 @@ def test_reject_non_winding_packs(kind, tmp_path, ring_step):
     path = tmp_path / f"{kind}.step"
     cq.exporters.export(shape, str(path))
     with pytest.raises(StepCoilError, match=match):
+        extract_step_centerlines(path)
+
+
+def test_reject_smooth_bspline_sweep(tmp_path):
+    # A valid closed rectangular sweep has no segmented section stations.
+    angle = np.linspace(0, 2 * np.pi, 12, endpoint=False)
+    points = [cq.Vector(100 * np.cos(t), 0, 100 * np.sin(t)) for t in angle]
+    edge = cq.Edge.makeSpline(points, periodic=True)
+    rail = cq.Wire.assembleEdges([edge])
+    plane = cq.Plane(origin=edge.startPoint(), normal=edge.tangentAt(0))
+    shape = cq.Workplane(plane).rect(8, 12).sweep(rail, isFrenet=True).val()
+    assert shape.isValid()
+    assert all(shell.Closed() for shell in shape.Shells())
+    assert any(face.geomType() == "BSPLINE" for face in shape.Faces())
+    path = tmp_path / "smooth_sweep.step"
+    cq.exporters.export(shape, str(path))
+    with pytest.raises(StepCoilError, match="Unsupported topology"):
         extract_step_centerlines(path)
 
 

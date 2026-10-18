@@ -89,7 +89,8 @@ MIT License
 ## Public tests and STL provenance
 
 CI builds [libneo](https://github.com/itpplasma/libneo) from a pinned public
-commit, installs `.[dev]`, and runs `python -m pytest python/tests -v -ra`.
+commit, installs `.[dev,step]`, and runs `python -m pytest python/tests -v -ra`.
+CI requires CadQuery/OCP imports and runs the STEP tests on Python 3.12.
 The system and Python build dependencies are listed in
 [the workflow](.github/workflows/tests.yml). libneo is currently installed from
 source rather than the Python package index. The build uses at most eight jobs.
@@ -103,7 +104,7 @@ git clone https://github.com/itpplasma/libneo.git .ci-deps/libneo
 git -C .ci-deps/libneo checkout f6090e8150c2f5b1c0afde09baadf79b50b1ffe7
 CMAKE_BUILD_PARALLEL_LEVEL=8 FC=gfortran python -m pip install \
   --no-build-isolation .ci-deps/libneo -Ccmake.define.LIBNEO_BUILD_TESTING=OFF
-python -m pip install -e '.[dev]'
+python -m pip install -e '.[dev,step]'
 python -m pytest python/tests -v -ra
 ```
 

@@ -52,18 +52,32 @@ have shape `(n_points + 1, 3)` and repeat the first point. Increasing this count
 reduces resampling error but does not reconstruct curvature absent from the CAD
 section stations. Open shells, capped conductors, self-intersections and
 unsupported topology raise `StepCoilError` with a coil index when available.
-Smooth periodic sweeps without section edges, fillets, hollow packs and arbitrary
-solid medial axes are currently unsupported. Multi-filament cross-sections are
-not implemented.
+Smooth periodic sweeps (including B-spline faces) without section edges,
+filleted sections, hollow packs and arbitrary solid medial axes are unsupported.
+The regression suite explicitly checks that a valid closed rectangular B-spline
+sweep raises `StepCoilError`. A section's area centroid defines the recovered
+filament; CAD alone cannot identify a different intended filament for an
+off-center conductor. Multi-filament cross-sections are not implemented.
 
 The round-trip test uses the complete 160-point ALPES coil 0, its original
-40 × 67 mm rectangular pack and loft/union construction (attribution and licenses
-in `python/tests/data/README.md`). The acceptance thresholds are a **0.2 mm**
-maximum bidirectional sampled distance between the original and extracted
-polylines, and **0.2%** maximum relative Biot–Savart vector error at 27 points
-in the cube `[-0.08, 0.08] m` (each more than 30 mm from the filament). Fields
-use the exact finite straight-segment integral, with source and extracted
-orientations matched. These tolerances apply to this fixture, not arbitrary CAD.
+40 × 67 mm rectangular pack and an adapted loft/union construction (attribution
+and licenses in [the fixture README](../../python/tests/data/alpes/README.md)).
+It does not execute the upstream ALPES export script. Because the generated
+sections are centered on the source vertices, section-center extraction should
+recover those vertices within **1e-9 m**; this is measured before resampling.
+Uniform arc-length resampling introduces new chords that can cut across the
+original polygon's corners. The test bounds source-to-resampled distance,
+sampled at 32 positions per source segment, by **0.2 mm**, and separately checks
+that resampled-to-source distance stays below **1e-9 m**.
+
+The test-only field oracle uses the exact finite straight-segment Biot–Savart
+integral, with orientations matched. It reports extraction error (section-center
+polygon versus source polygon) separately from resampling error (resampled
+polygon versus section-center polygon). Relative vector errors must stay below
+**1e-9** for extraction and **0.2%** for both resampling and the full round trip
+at 27 points in `[-0.08, 0.08] m`, each more than 30 mm from the filament.
+These fixture-specific checks do not validate a smooth physical coil field or
+arbitrary CAD.
 
 To save figure-ready comparisons and statistics, run:
 
@@ -72,10 +86,13 @@ GECKO_STEP_ARTIFACT_DIR=artifacts/step \
     pytest python/tests/test_step.py::test_alpes_roundtrip -v
 ```
 
-This writes `centerline.csv` (extracted samples paired with nearest original
-polyline projections, all in meters), `field_errors.csv` (positions, both fields
-in tesla and relative errors), and `statistics.csv` (max deviation, max/RMS field
-error and tolerances). STEP output remains in pytest's temporary directory.
+This writes `centerline.csv` (resampled vertices paired with nearest source
+polyline projections and forward distances, in meters), `field_errors.csv`
+(positions, source/section-center/resampled fields in tesla, and separate
+extraction/resampling/total relative errors), and `statistics.csv` (maximum
+section-center extraction error, both directed resampling distances, separate
+field errors and tolerances). The backward distance is sampled, not an exact
+Hausdorff distance. STEP output remains in pytest's temporary directory.
 
 ```{eval-rst}
 .. automodule:: gecko.step

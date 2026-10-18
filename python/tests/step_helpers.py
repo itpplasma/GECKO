@@ -2,7 +2,7 @@
 
 Generator adapted from ALPES CadQueryMultiCoilGenerator.py and
 windingCoordinateGenerator.py (MIT), revision
- eb31dc8f4725a5bc355a558b4357f9234c312264. See data/README.md.
+ eb31dc8f4725a5bc355a558b4357f9234c312264. See data/alpes/README.md.
 """
 
 import numpy as np
