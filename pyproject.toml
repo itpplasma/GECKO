@@ -32,6 +32,7 @@ dependencies = [
 stl = [
     "trimesh>=3.15",
     "shapely>=2.0",
+    "scipy>=1.7",
 ]
 vis = [
     "pyvista>=0.40",
@@ -40,6 +41,7 @@ vis = [
 dev = [
     "trimesh>=3.15",
     "shapely>=2.0",
+    "scipy>=1.7",
     "pyvista>=0.40",
     "matplotlib>=3.5",
     "pytest>=7.0",
@@ -56,15 +58,18 @@ docs = [
 [project.scripts]
 gecko = "gecko.cli:main"
 
+[tool.hatch.build.hooks.custom]
+
 [tool.hatch.build.targets.wheel]
 packages = ["python/gecko"]
 
 [tool.hatch.build.targets.sdist]
-include = ["python/gecko/**"]
+include = ["python/gecko/**", "hatch_build.py"]
 
 [tool.pytest.ini_options]
 testpaths = ["python/tests"]
 python_files = ["test_*.py"]
+markers = ["private_data: optional tests requiring non-public geometry"]
 
 [tool.ruff]
 line-length = 88

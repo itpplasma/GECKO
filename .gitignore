@@ -4,3 +4,7 @@ __pycache__/
 dist/
 build/
 docs/_build/
+.venv/
+.ci-deps/
+artifacts/
+.pytest_cache/

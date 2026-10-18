@@ -440,7 +440,9 @@ def curve_from_contour(contour: np.ndarray) -> Callable[[np.ndarray], np.ndarray
 
 
 def export_mesh_to_stl(mesh: object, path: Path | str) -> Path:
-    """Export a trimesh mesh to STL file."""
+    """Export STL with a ``.stl.json`` version and checksum sidecar."""
+    from .provenance import write_stl_provenance
+
     import trimesh
 
     if not isinstance(mesh, trimesh.Trimesh):
@@ -448,6 +450,7 @@ def export_mesh_to_stl(mesh: object, path: Path | str) -> Path:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     mesh.export(str(path))
+    write_stl_provenance(path)
     return path
 
 
@@ -493,6 +496,4 @@ def convert_stl_units(
         mesh = mesh.copy()
         mesh.apply_scale(scale)
 
-    out.parent.mkdir(parents=True, exist_ok=True)
-    mesh.export(str(out))
-    return out
+    return export_mesh_to_stl(mesh, out)

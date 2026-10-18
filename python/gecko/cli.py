@@ -43,6 +43,7 @@ def cmd_view(args: argparse.Namespace) -> int:
 
 def cmd_wall_from_vmec(args: argparse.Namespace) -> int:
     """Generate wall STL from VMEC wout file."""
+    from .stl import export_mesh_to_stl
     from .wall import offset_wall_mesh, wall_mesh_from_wout
 
     if args.offset > 0:
@@ -60,7 +61,7 @@ def cmd_wall_from_vmec(args: argparse.Namespace) -> int:
         )
 
     output = args.output or Path(args.wout).with_suffix(".stl")
-    mesh.export(str(output))
+    export_mesh_to_stl(mesh, output)
     print(f"Wrote {output}")
     return 0
 
