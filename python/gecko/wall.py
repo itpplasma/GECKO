@@ -140,7 +140,11 @@ def offset_wall_mesh(
             faces.append((v00, v10, v11))
             faces.append((v00, v11, v01))
 
-    return trimesh.Trimesh(vertices=vertices, faces=np.asarray(faces), process=False)
+    mesh = trimesh.Trimesh(vertices=vertices, faces=np.asarray(faces), process=False)
+    # Shapely's exterior orientation may differ from the VMEC theta ordering.
+    # Ensure a closed wall has outward normals regardless of buffer winding.
+    mesh.fix_normals()
+    return mesh
 
 
 def _resample_polygon(

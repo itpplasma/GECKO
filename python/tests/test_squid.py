@@ -1,30 +1,29 @@
-"""
-Test GECKO with SQUID 5C configuration.
+"""Optional private geometry tests.
 
-This test requires SQUID data files at:
-- ~/data/SQUID/VMEC/Proxima2024/5C_6NKvZumZYmPEDi3rmLRd/VmecFreeBoundary/wout_free.nc
-- ~/data/SQUID/VMEC/Proxima2024/5C_6NKvZumZYmPEDi3rmLRd/ScaleCoils/coils.scaled
-
-Run with: pytest python/tests/test_squid.py -v --visual
-
-To generate figures:
-    python python/tests/test_squid.py
+Set GECKO_PRIVATE_WOUT and GECKO_PRIVATE_COILS and pass --private-data to run.
+For figures, set GECKO_PRIVATE_OUTPUT and run this module directly.
 """
 
+import os
 from pathlib import Path
 
 import pytest
 
-SQUID_WOUT = Path.home() / "data/SQUID/VMEC/Proxima2024/5C_6NKvZumZYmPEDi3rmLRd/VmecFreeBoundary/wout_free.nc"
-SQUID_COILS = Path.home() / "data/SQUID/VMEC/Proxima2024/5C_6NKvZumZYmPEDi3rmLRd/ScaleCoils/coils.scaled"
-OUTPUT_DIR = Path("/tmp/gecko_squid")
+from gecko.stl import export_mesh_to_stl
+
+pytestmark = pytest.mark.private_data
+SQUID_WOUT = Path(os.environ.get("GECKO_PRIVATE_WOUT", "missing-private-wout.nc"))
+SQUID_COILS = Path(os.environ.get("GECKO_PRIVATE_COILS", "missing-private-coils"))
+OUTPUT_DIR = Path(os.environ.get("GECKO_PRIVATE_OUTPUT", "artifacts/private"))
 
 
 @pytest.fixture
 def squid_data():
     """Skip test if SQUID data not available."""
     if not SQUID_WOUT.exists() or not SQUID_COILS.exists():
-        pytest.skip("SQUID data not available")
+        pytest.skip(
+            "private data unavailable: set GECKO_PRIVATE_WOUT and GECKO_PRIVATE_COILS"
+        )
     return SQUID_WOUT, SQUID_COILS
 
 
@@ -55,7 +54,7 @@ def test_squid_offset_wall(squid_data):
     assert mesh.faces.shape[0] > 0
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    mesh.export(str(OUTPUT_DIR / "squid_wall_25cm.stl"))
+    export_mesh_to_stl(mesh, OUTPUT_DIR / "squid_wall_25cm.stl")
 
 
 def test_squid_coils_mesh(squid_data):
@@ -74,7 +73,7 @@ def test_squid_coils_mesh(squid_data):
     assert mesh.faces.shape[0] > 0
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    mesh.export(str(OUTPUT_DIR / "squid_coils.stl"))
+    export_mesh_to_stl(mesh, OUTPUT_DIR / "squid_coils.stl")
 
 
 def test_squid_viewer(squid_data):
@@ -116,18 +115,18 @@ def main():
 
     print("Creating LCFS mesh...")
     lcfs_mesh = wall_mesh_from_wout(SQUID_WOUT, n_theta=128, n_zeta=96)
-    lcfs_mesh.export(str(OUTPUT_DIR / "squid_lcfs.stl"))
+    export_mesh_to_stl(lcfs_mesh, OUTPUT_DIR / "squid_lcfs.stl")
     print(f"  Saved: {OUTPUT_DIR / 'squid_lcfs.stl'}")
 
     print("Creating wall mesh (25cm offset)...")
     wall_mesh = offset_wall_mesh(SQUID_WOUT, offset=0.25, n_theta=128, n_zeta=96)
-    wall_mesh.export(str(OUTPUT_DIR / "squid_wall_25cm.stl"))
+    export_mesh_to_stl(wall_mesh, OUTPUT_DIR / "squid_wall_25cm.stl")
     print(f"  Saved: {OUTPUT_DIR / 'squid_wall_25cm.stl'}")
 
     print("Creating coil meshes (SPARC-like: 40cm x 80cm)...")
     coils = CoilsFile.from_file(str(SQUID_COILS))
     coil_mesh = coils_to_mesh(coils, width=0.4, height=0.8)
-    coil_mesh.export(str(OUTPUT_DIR / "squid_coils.stl"))
+    export_mesh_to_stl(coil_mesh, OUTPUT_DIR / "squid_coils.stl")
     print(f"  Saved: {OUTPUT_DIR / 'squid_coils.stl'}")
     print(f"  Number of coils: {len(coils.filaments)}")
     print(f"  Field periods: {coils.periods}")

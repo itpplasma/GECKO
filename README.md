@@ -85,3 +85,39 @@ python3 -m gecko.cli view --stl-units mm wall_mm.stl
 ## License
 
 MIT License
+
+## Public tests and STL provenance
+
+CI builds [libneo](https://github.com/itpplasma/libneo) from a pinned public
+commit, installs `.[dev]`, and runs `python -m pytest python/tests -v -ra`.
+The system and Python build dependencies are listed in
+[the workflow](.github/workflows/tests.yml). libneo is currently installed from
+source rather than the Python package index. The build uses at most eight jobs.
+For example, after installing the workflow's system dependencies:
+
+```bash
+python -m venv .venv
+. .venv/bin/activate
+python -m pip install numpy scipy netCDF4 scikit-build-core f90wrap==0.3.0
+git clone https://github.com/itpplasma/libneo.git .ci-deps/libneo
+git -C .ci-deps/libneo checkout f6090e8150c2f5b1c0afde09baadf79b50b1ffe7
+CMAKE_BUILD_PARALLEL_LEVEL=8 FC=gfortran python -m pip install \
+  --no-build-isolation .ci-deps/libneo -Ccmake.define.LIBNEO_BUILD_TESTING=OFF
+python -m pip install -e '.[dev]'
+python -m pytest python/tests -v -ra
+```
+
+The vendored [ALPES fixture](python/tests/data/alpes/README.md) is attributed to
+The ALPES Team and licensed CC BY 4.0, separately from GECKO's MIT code.
+Tests check closed, outward-oriented offset walls, RZ clearance from a densely
+sampled LCFS, coil tube profiles, and separated/overlapping coil pairs.
+Private geometry tests skip by default. To run them, provide
+`GECKO_PRIVATE_WOUT` and `GECKO_PRIVATE_COILS` and pass `--private-data`.
+The private viewer test also requires a working off-screen rendering backend.
+
+`gecko wall-from-vmec`, `gecko stl-convert`, and
+`gecko.stl.export_mesh_to_stl(mesh, path)` write a `<filename>.stl.json` sidecar
+with the GECKO package version, `git describe --tags --always --dirty`, and the
+STL SHA-256 checksum. Keep the sidecar with meshes used in publications. Wheels
+retain their build revision; source archives built without Git record a null
+revision. Direct third-party calls such as `mesh.export(...)` bypass this writer.
