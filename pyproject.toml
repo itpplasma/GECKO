@@ -29,6 +29,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+step = [
+    "cadquery>=2.8,<3",
+]
 stl = [
     "trimesh>=3.15",
     "shapely>=2.0",
