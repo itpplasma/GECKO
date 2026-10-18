@@ -69,3 +69,15 @@ def test_coils_to_mesh(simple_coils_file):
 
     assert mesh.vertices.shape[0] > 0
     assert mesh.faces.shape[0] > 0
+
+
+def test_step_dependency_is_optional(tmp_path, monkeypatch):
+    import sys
+
+    from gecko.step import extract_step_centerlines
+
+    path = tmp_path / "coil.step"
+    path.write_text("placeholder")
+    monkeypatch.setitem(sys.modules, "cadquery", None)
+    with pytest.raises(ImportError, match=r"gecko\[step\]"):
+        extract_step_centerlines(path)

@@ -10,6 +10,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
 
 
@@ -187,6 +188,23 @@ def cmd_view_results(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_coils_from_step(args: argparse.Namespace) -> int:
+    """Extract STEP winding packs and write filaments in SI units."""
+    from .step import StepCoilError, write_step_coils
+
+    currents = args.currents[0] if len(args.currents) == 1 else args.currents
+    try:
+        coils = write_step_coils(
+            args.input, args.output, currents=currents, n_points=args.n_points,
+            units=args.units, reverse=args.reverse,
+        )
+    except (StepCoilError, ValueError, OSError, ImportError) as exc:
+        print(f"STEP import failed: {exc}", file=sys.stderr)
+        return 1
+    print(f"Wrote {args.output}: {len(coils.filaments)} coils (m, A)")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     """Main CLI entry point."""
     parser = argparse.ArgumentParser(
@@ -222,6 +240,26 @@ def main(argv: list[str] | None = None) -> int:
     p_wall.add_argument("--n-theta", type=int, default=128)
     p_wall.add_argument("--n-zeta", type=int, default=96)
     p_wall.set_defaults(func=cmd_wall_from_vmec)
+
+    p_step = subparsers.add_parser(
+        "coils-from-step", help="Extract filament centerlines from STEP winding packs"
+    )
+    p_step.add_argument("input", type=Path)
+    p_step.add_argument("-o", "--output", type=Path, required=True)
+    p_step.add_argument(
+        "--currents", type=float, nargs="+", required=True,
+        help="Signed amperes: one value for all solids, or one per STEP solid",
+    )
+    p_step.add_argument("--n-points", type=int, default=256)
+    p_step.add_argument(
+        "--units", choices=["mm", "m"], default="mm",
+        help="CAD working unit; STEP header units are respected; output is meters",
+    )
+    p_step.add_argument(
+        "--reverse", type=int, nargs="*", default=[],
+        help="Zero-based solid indices to reverse from canonical orientation",
+    )
+    p_step.set_defaults(func=cmd_coils_from_step)
 
     # coils-info command
     p_info = subparsers.add_parser("coils-info", help="Show coils file information")
