@@ -82,6 +82,17 @@ python3 -m gecko.cli stl-convert wall_mm.stl wall_m.stl --from-units mm --to-uni
 python3 -m gecko.cli view --stl-units mm wall_mm.stl
 ```
 
+## Merging
+
+- Pull requests, including every layer of a stacked PR, run CI.
+- Review a stack layer by layer. When it is ready, collapse it into one PR into
+  `main` (retarget the top layer to `main`); the lower PRs then show as merged.
+- Click "Merge when ready" (or `gh pr merge --merge --auto`). The PR enters the
+  merge queue, CI runs on the exact merge result, and on success it lands on
+  `main` as a merge commit. `main` itself is not re-tested on push.
+- A branch need not be up to date with `main`. Merge `main` into a PR only
+  when it conflicts.
+
 ## License
 
 MIT License
