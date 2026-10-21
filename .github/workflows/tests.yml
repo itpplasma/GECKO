@@ -2,12 +2,16 @@ name: Open geometry tests
 
 on:
   pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - labeled
   merge_group:
   workflow_dispatch:
   push:
     branches:
       - main
-
 permissions:
   contents: read
 
