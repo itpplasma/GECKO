@@ -17,9 +17,10 @@ permissions:
 
 jobs:
   pytest:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, itp-ubuntu24]
     env:
-      CMAKE_BUILD_PARALLEL_LEVEL: "8"
+      MPLBACKEND: Agg
+      CMAKE_BUILD_PARALLEL_LEVEL: "2"
       OMP_NUM_THREADS: "1"
       OPENBLAS_NUM_THREADS: "1"
       FC: gfortran
@@ -31,13 +32,17 @@ jobs:
         with:
           python-version: "3.12"
       # Match the public SIMPLE/libneo source-build dependencies.
+      - name: Use executable job scratch
+        run: echo "TMPDIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
+
       - name: Install system dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             cmake ninja-build gfortran pkg-config libfftw3-dev libgsl-dev \
             libhdf5-dev libnetcdf-dev libopenblas-dev liblapack-dev \
-            libopenmpi-dev openmpi-bin
+            libopenmpi-dev openmpi-bin \
+            libgl1  # CadQuery/OCP loads libGL.so.1 even for headless STEP tests.
       - name: Install libneo from source
         run: |
           python -m pip install numpy scipy netCDF4 scikit-build-core f90wrap==0.3.0
@@ -61,7 +66,7 @@ jobs:
             artifacts/pytest.xml
             artifacts/step/*.csv
     if: >-
-      github.event_name == 'merge_group' || github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && github.actor != 'github-merge-queue[bot]') || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'full-ci'))
+      github.event_name == 'merge_group' || github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && github.actor != 'github-merge-queue[bot]')
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || format('{0}-{1}', github.ref, github.run_id) }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
