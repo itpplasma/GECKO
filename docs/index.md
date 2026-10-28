@@ -14,16 +14,13 @@ GECKO provides CAD and visualization tools for fusion device geometry, building 
 ## Installation
 
 ```bash
-pip install gecko
-```
-
-For development:
-
-```bash
 git clone git@github.com:itpplasma/GECKO.git
 cd GECKO
 pip install -e ".[dev]"
 ```
+
+GECKO depends on [libneo](https://github.com/itpplasma/libneo); see
+[testing](testing.md) for how CI installs it.
 
 ## Quick Start
 
@@ -40,6 +37,9 @@ quick_view("wall.stl", "coils.scaled")
 :maxdepth: 2
 
 methods
+testing
+provenance
+contributing
 api/index
 references
 ```

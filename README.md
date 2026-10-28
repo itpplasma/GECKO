@@ -1,12 +1,16 @@
 # GECKO
 
-**Geometry, Engineering, and CAD for Kinetic modeling and Optimization**
+Geometry, Engineering, and CAD for Kinetic modeling and Optimization: a Python
+library for CAD-related tasks in fusion plasma physics, built on
+[libneo](https://github.com/itpplasma/libneo).
 
-A Python library for handling CAD-related tasks in fusion plasma physics:
 - STL mesh slicing and boundary extraction
 - Wall geometry generation from VMEC equilibria
 - Coil file parsing and visualization
+- Coil filament extraction from STEP winding packs (CadQuery)
 - Interactive 3D visualization with PyVista
+
+Status: alpha; interfaces may change.
 
 ## Installation
 
@@ -19,13 +23,19 @@ pip install -e ".[stl]"
 # With visualization (pyvista, matplotlib)
 pip install -e ".[vis]"
 
+# With STEP support (cadquery)
+pip install -e ".[step]"
+
 # Full development install
 pip install -e ".[dev]"
 ```
 
+CI installs the `libneo` dependency from source at a pinned commit; see
+[docs/testing.md](docs/testing.md).
+
 ## Features
 
-### Wall Generation from VMEC
+### Wall generation from VMEC
 
 Generate STL wall meshes from VMEC equilibrium files:
 
@@ -36,7 +46,7 @@ mesh = wall_mesh_from_wout("wout.nc", n_theta=128, n_zeta=96)
 mesh.export("wall.stl")
 ```
 
-### STL Boundary Extraction
+### STL boundary extraction
 
 Extract RZ cross-sections from STL wall files:
 
@@ -46,7 +56,7 @@ from gecko.stl import extract_boundary_slices
 slices = extract_boundary_slices("wall.stl", n_phi=32)
 ```
 
-### Coil File Handling
+### Coil files
 
 Parse and visualize STELLOPT/MAKEGRID coil files:
 
@@ -57,7 +67,7 @@ coils = CoilsFile.from_file("coils.c09r00")
 fig, ax = coils.plot(show=True)
 ```
 
-### Interactive 3D Visualization
+### Interactive 3D visualization
 
 ```python
 from gecko.viewer import Viewer
@@ -68,11 +78,10 @@ viewer.add_coils("coils.scaled", cross_section=(0.4, 0.8))
 viewer.show()
 ```
 
-### STL Units (mm vs m)
+### STL units
 
-STL files do not store units. GECKO assumes **meters** by default.
-
-For engineer CAD STLs (often **mm**), either:
+STL files do not store units. GECKO assumes metres by default. For CAD STL
+files in millimetres, either:
 
 ```bash
 # 1) Convert once (recommended)
@@ -82,54 +91,29 @@ python3 -m gecko.cli stl-convert wall_mm.stl wall_m.stl --from-units mm --to-uni
 python3 -m gecko.cli view --stl-units mm wall_mm.stl
 ```
 
-## Merging
+## Command line
 
-- Pull requests, including every layer of a stacked PR, run CI.
-- Review a stack layer by layer. When it is ready, collapse it into one PR into
-  `main` (retarget the top layer to `main`); the lower PRs then show as merged.
-- Click "Merge when ready" (or `gh pr merge --merge --auto`). The PR enters the
-  merge queue, CI runs on the exact merge result, and on success it lands on
-  `main` as a merge commit. `main` itself is not re-tested on push.
-- A branch need not be up to date with `main`. Merge `main` into a PR only
-  when it conflicts.
+The `gecko` command (also `python3 -m gecko.cli`) provides `view`,
+`wall-from-vmec`, `coils-from-step`, `coils-info`, `coils-plot`,
+`stl-convert` and `view-results` (SIMPLE wall hits on an STL wall); see
+`gecko --help`.
+
+## Testing
+
+    pip install -e ".[dev,step]"
+    python -m pytest python/tests -v -ra
+
+See [docs/testing.md](docs/testing.md) for the full setup used in CI,
+including libneo, and for the optional private-data tests.
+
+## Documentation
+
+The Sphinx documentation in `docs/` covers the API, the
+[methods](docs/methods.md) used for wall and coil meshes,
+[testing](docs/testing.md), [STL provenance](docs/provenance.md) and
+[contributing](docs/contributing.md).
 
 ## License
 
-MIT License
-
-## Public tests and STL provenance
-
-CI builds [libneo](https://github.com/itpplasma/libneo) from a pinned public
-commit, installs `.[dev,step]`, and runs `python -m pytest python/tests -v -ra`.
-CI requires CadQuery/OCP imports and runs the STEP tests on Python 3.12.
-The system and Python build dependencies are listed in
-[the workflow](.github/workflows/tests.yml). libneo is currently installed from
-source rather than the Python package index. The build uses at most eight jobs.
-For example, after installing the workflow's system dependencies:
-
-```bash
-python -m venv .venv
-. .venv/bin/activate
-python -m pip install numpy scipy netCDF4 scikit-build-core f90wrap==0.3.0
-git clone https://github.com/itpplasma/libneo.git .ci-deps/libneo
-git -C .ci-deps/libneo checkout f6090e8150c2f5b1c0afde09baadf79b50b1ffe7
-CMAKE_BUILD_PARALLEL_LEVEL=8 FC=gfortran python -m pip install \
-  --no-build-isolation .ci-deps/libneo -Ccmake.define.LIBNEO_BUILD_TESTING=OFF
-python -m pip install -e '.[dev,step]'
-python -m pytest python/tests -v -ra
-```
-
-The vendored [ALPES fixture](python/tests/data/alpes/README.md) is attributed to
-The ALPES Team and licensed CC BY 4.0, separately from GECKO's MIT code.
-Tests check closed, outward-oriented offset walls, RZ clearance from a densely
-sampled LCFS, coil tube profiles, and separated/overlapping coil pairs.
-Private geometry tests skip by default. To run them, provide
-`GECKO_PRIVATE_WOUT` and `GECKO_PRIVATE_COILS` and pass `--private-data`.
-The private viewer test also requires a working off-screen rendering backend.
-
-`gecko wall-from-vmec`, `gecko stl-convert`, and
-`gecko.stl.export_mesh_to_stl(mesh, path)` write a `<filename>.stl.json` sidecar
-with the GECKO package version, `git describe --tags --always --dirty`, and the
-STL SHA-256 checksum. Keep the sidecar with meshes used in publications. Wheels
-retain their build revision; source archives built without Git record a null
-revision. Direct third-party calls such as `mesh.export(...)` bypass this writer.
+MIT, see [LICENSE](LICENSE). The ALPES test fixture in `python/tests/data/alpes/`
+is licensed CC BY 4.0 (see its [README](python/tests/data/alpes/README.md)).
